@@ -118,6 +118,8 @@ final class ShortcutStore {
     # App targets can be bundle identifiers, app names, or .app paths.
     # Hyperkey means command+option+control+shift.
     #
+    # Tip: enable "Caps Lock → Hyperkey" from the Toggler menu to use Caps Lock as hyper.
+    #
     # Examples:
     # hyper+t = com.apple.Terminal
     # hyper+s = Safari
