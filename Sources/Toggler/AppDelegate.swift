@@ -15,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var bindings: [ShortcutBinding] = []
     private var parseErrors: [ShortcutParseError] = []
+    private var settingsWindowController: SettingsWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -44,6 +45,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         loadShortcuts()
     }
 
+    @objc private func openSettings() {
+        if settingsWindowController == nil {
+            let viewModel = SettingsViewModel(
+                store: shortcutStore,
+                hyperkeyEnabled: hyperkeyPreference.isEnabled
+            ) { [weak self] outcome in
+                self?.applySettings(outcome)
+            }
+            settingsWindowController = SettingsWindowController(viewModel: viewModel) { [weak self] in
+                self?.settingsWindowDidClose()
+            }
+        }
+
+        // An accessory app can't reliably become the foreground/key app, which
+        // the shortcut recorder needs. Become a regular app while Settings is
+        // open, then revert on close.
+        NSApp.setActivationPolicy(.regular)
+        settingsWindowController?.showWindow(nil)
+        settingsWindowController?.window?.center()
+        NSApp.activate(ignoringOtherApps: true)
+        settingsWindowController?.window?.makeKeyAndOrderFront(nil)
+    }
+
+    private func settingsWindowDidClose() {
+        settingsWindowController = nil
+        NSApp.setActivationPolicy(.accessory)
+    }
+
+    private func applySettings(_ outcome: SettingsOutcome) {
+        // The view model already persisted the app-enabled flag; reload re-reads
+        // and re-registers shortcuts, honoring it.
+        loadShortcuts()
+
+        // Drive the real Hyperkey feature only when the desired state differs
+        // from what's stored, so re-saving an unchanged setting doesn't re-prompt
+        // for Accessibility.
+        if outcome.hyperkeyEnabled != hyperkeyPreference.isEnabled {
+            setHyperkeyEnabled(outcome.hyperkeyEnabled)
+        }
+    }
+
     @objc private func openShortcutsFile() {
         NSWorkspace.shared.open(shortcutStore.configURL)
     }
@@ -52,31 +94,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.terminate(nil)
     }
 
-    @objc private func toggleHyperkey() {
-        if hyperkeyController.isActive {
-            hyperkeyPreference.isEnabled = false
-            hyperkeyController.stop()
-            presentNotification(title: "Toggler", body: "Caps Lock → Hyperkey disabled. Caps Lock is back to normal.")
-        } else {
+    /// Enables or disables the Caps Lock → Hyperkey feature, persisting the
+    /// preference and starting/stopping the controller. On enable, handles the
+    /// missing-Accessibility and failure cases.
+    private func setHyperkeyEnabled(_ enabled: Bool) {
+        if enabled {
             hyperkeyPreference.isEnabled = true
             switch hyperkeyController.start() {
             case .started:
                 presentNotification(title: "Toggler", body: "Caps Lock → Hyperkey enabled. Hold Caps Lock as your Hyper modifier.")
             case .needsAccessibility:
                 hyperkeyController.requestAccessibility()
-                presentNotification(title: "Toggler", body: "Grant Accessibility access to Toggler, then enable Caps Lock → Hyperkey again.")
+                presentNotification(title: "Toggler", body: "Grant Accessibility access to Toggler to finish enabling Caps Lock → Hyperkey.")
             case .failed(let message):
                 hyperkeyPreference.isEnabled = false
                 presentNotification(title: "Toggler", body: "Could not enable Hyperkey: \(message)")
             }
+        } else {
+            hyperkeyPreference.isEnabled = false
+            hyperkeyController.stop()
+            presentNotification(title: "Toggler", body: "Caps Lock → Hyperkey disabled. Caps Lock is back to normal.")
         }
         rebuildMenu()
-    }
-
-    @objc private func openAccessibilitySettings() {
-        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
-            NSWorkspace.shared.open(url)
-        }
     }
 
     /// Brings the controller's actual state in line with the stored preference.
@@ -97,7 +136,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         bindings = result.bindings
         parseErrors = result.errors
 
-        hotKeyManager.register(bindings) { [weak self] binding in
+        let activeBindings = SettingsDefaults.isEnabled ? bindings : []
+        hotKeyManager.register(activeBindings) { [weak self] binding in
             self?.appToggler.toggle(binding.target)
         }
 
@@ -115,7 +155,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let menu = NSMenu()
 
         let statusTitle: String
-        if bindings.isEmpty {
+        if !SettingsDefaults.isEnabled {
+            statusTitle = "Toggler is disabled"
+        } else if bindings.isEmpty {
             statusTitle = "No shortcuts loaded"
         } else if bindings.count == 1 {
             statusTitle = "1 shortcut loaded"
@@ -135,17 +177,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         menu.addItem(.separator())
-
-        let hyperItem = NSMenuItem(title: "Caps Lock → Hyperkey", action: #selector(toggleHyperkey), keyEquivalent: "")
-        hyperItem.state = hyperkeyController.isActive ? .on : .off
-        menu.addItem(hyperItem)
-
-        if hyperkeyPreference.isEnabled, !hyperkeyController.isActive {
-            let hint = NSMenuItem(title: "Needs Accessibility permission…", action: #selector(openAccessibilitySettings), keyEquivalent: "")
-            menu.addItem(hint)
-        }
-
-        menu.addItem(.separator())
+        let settingsItem = NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
+        settingsItem.keyEquivalentModifierMask = [.command]
+        menu.addItem(settingsItem)
         menu.addItem(NSMenuItem(title: "Open Shortcuts File", action: #selector(openShortcutsFile), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Reload Shortcuts", action: #selector(reloadShortcuts), keyEquivalent: "r"))
         menu.addItem(.separator())
