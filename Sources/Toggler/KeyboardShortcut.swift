@@ -7,8 +7,15 @@ struct KeyboardShortcut: Equatable {
     let displayValue: String
 }
 
+protocol KeyboardShortcutKeyResolving {
+    func keyCode(for token: String) -> UInt32?
+}
+
 enum ShortcutParser {
-    static func parse(_ value: String) throws -> KeyboardShortcut {
+    static func parse(
+        _ value: String,
+        keyResolver: KeyboardShortcutKeyResolving = CurrentKeyboardLayoutKeyResolver()
+    ) throws -> KeyboardShortcut {
         let tokens = value
             .split(separator: "+")
             .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
@@ -40,12 +47,12 @@ enum ShortcutParser {
             throw ShortcutParseFailure("shortcuts must include at least one modifier")
         }
 
-        guard let keyCode = keyCodes[keyToken] else {
+        guard let keyCode = keyResolver.keyCode(for: keyToken) else {
             throw ShortcutParseFailure("unknown key '\(keyToken)'")
         }
 
         return KeyboardShortcut(
-            keyCode: UInt32(keyCode),
+            keyCode: keyCode,
             carbonModifiers: modifiers,
             displayValue: displayValue(modifiers: modifiers, key: keyToken)
         )
@@ -70,66 +77,122 @@ enum ShortcutParser {
         parts.append(key)
         return parts.joined(separator: "+")
     }
+}
 
-    private static let keyCodes: [String: Int] = [
-        "a": kVK_ANSI_A,
-        "b": kVK_ANSI_B,
-        "c": kVK_ANSI_C,
-        "d": kVK_ANSI_D,
-        "e": kVK_ANSI_E,
-        "f": kVK_ANSI_F,
-        "g": kVK_ANSI_G,
-        "h": kVK_ANSI_H,
-        "i": kVK_ANSI_I,
-        "j": kVK_ANSI_J,
-        "k": kVK_ANSI_K,
-        "l": kVK_ANSI_L,
-        "m": kVK_ANSI_M,
-        "n": kVK_ANSI_N,
-        "o": kVK_ANSI_O,
-        "p": kVK_ANSI_P,
-        "q": kVK_ANSI_Q,
-        "r": kVK_ANSI_R,
-        "s": kVK_ANSI_S,
-        "t": kVK_ANSI_T,
-        "u": kVK_ANSI_U,
-        "v": kVK_ANSI_V,
-        "w": kVK_ANSI_W,
-        "x": kVK_ANSI_X,
-        "y": kVK_ANSI_Y,
-        "z": kVK_ANSI_Z,
-        "0": kVK_ANSI_0,
-        "1": kVK_ANSI_1,
-        "2": kVK_ANSI_2,
-        "3": kVK_ANSI_3,
-        "4": kVK_ANSI_4,
-        "5": kVK_ANSI_5,
-        "6": kVK_ANSI_6,
-        "7": kVK_ANSI_7,
-        "8": kVK_ANSI_8,
-        "9": kVK_ANSI_9,
-        "`": kVK_ANSI_Grave,
-        "grave": kVK_ANSI_Grave,
-        "-": kVK_ANSI_Minus,
-        "minus": kVK_ANSI_Minus,
-        "=": kVK_ANSI_Equal,
-        "equal": kVK_ANSI_Equal,
-        "[": kVK_ANSI_LeftBracket,
-        "leftbracket": kVK_ANSI_LeftBracket,
-        "]": kVK_ANSI_RightBracket,
-        "rightbracket": kVK_ANSI_RightBracket,
-        "\\": kVK_ANSI_Backslash,
-        "backslash": kVK_ANSI_Backslash,
-        ";": kVK_ANSI_Semicolon,
-        "semicolon": kVK_ANSI_Semicolon,
-        "'": kVK_ANSI_Quote,
-        "quote": kVK_ANSI_Quote,
-        ",": kVK_ANSI_Comma,
-        "comma": kVK_ANSI_Comma,
-        ".": kVK_ANSI_Period,
-        "period": kVK_ANSI_Period,
-        "/": kVK_ANSI_Slash,
-        "slash": kVK_ANSI_Slash,
+struct CurrentKeyboardLayoutKeyResolver: KeyboardShortcutKeyResolving {
+    private let layoutKeyCodes: [String: UInt32]?
+
+    init() {
+        layoutKeyCodes = Self.buildLayoutKeyCodes()
+    }
+
+    func keyCode(for token: String) -> UInt32? {
+        if let keyCode = Self.nonLayoutKeyCodes[token] {
+            return UInt32(keyCode)
+        }
+
+        guard let character = Self.layoutCharacter(for: token) else {
+            return nil
+        }
+
+        if let layoutKeyCodes {
+            return layoutKeyCodes[character]
+        }
+
+        return Self.qwertyFallbackKeyCodes[character].map(UInt32.init)
+    }
+
+    private static func layoutCharacter(for token: String) -> String? {
+        if let character = layoutCharacterAliases[token] {
+            return character
+        }
+
+        return token.count == 1 ? token : nil
+    }
+
+    private static func buildLayoutKeyCodes() -> [String: UInt32]? {
+        guard let inputSource = TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue(),
+              let rawLayoutData = TISGetInputSourceProperty(inputSource, kTISPropertyUnicodeKeyLayoutData) else {
+            return nil
+        }
+
+        let layoutData = Unmanaged<CFData>.fromOpaque(rawLayoutData).takeUnretainedValue()
+        guard let bytes = CFDataGetBytePtr(layoutData) else {
+            return nil
+        }
+
+        let keyboardLayout = UnsafeRawPointer(bytes).assumingMemoryBound(to: UCKeyboardLayout.self)
+        let keyboardType = UInt32(LMGetKbdType())
+        let modifierStates = [UInt32(0), UInt32(shiftKey >> 8)]
+        var keyCodes: [String: UInt32] = [:]
+
+        for keyCode in UInt16(0)..<UInt16(128) {
+            for modifierState in modifierStates {
+                guard let character = translatedCharacter(
+                    keyCode: keyCode,
+                    modifierState: modifierState,
+                    keyboardLayout: keyboardLayout,
+                    keyboardType: keyboardType
+                ), character.count == 1 else {
+                    continue
+                }
+
+                if keyCodes[character] == nil {
+                    keyCodes[character] = UInt32(keyCode)
+                }
+            }
+        }
+
+        return keyCodes
+    }
+
+    private static func translatedCharacter(
+        keyCode: UInt16,
+        modifierState: UInt32,
+        keyboardLayout: UnsafePointer<UCKeyboardLayout>,
+        keyboardType: UInt32
+    ) -> String? {
+        var deadKeyState: UInt32 = 0
+        var length = 0
+        var characters = [UniChar](repeating: 0, count: 4)
+
+        let status = characters.withUnsafeMutableBufferPointer { buffer in
+            UCKeyTranslate(
+                keyboardLayout,
+                keyCode,
+                UInt16(kUCKeyActionDisplay),
+                modifierState,
+                keyboardType,
+                OptionBits(kUCKeyTranslateNoDeadKeysBit),
+                &deadKeyState,
+                buffer.count,
+                &length,
+                buffer.baseAddress
+            )
+        }
+
+        guard status == noErr, length > 0 else {
+            return nil
+        }
+
+        return String(utf16CodeUnits: characters, count: length).lowercased()
+    }
+
+    private static let layoutCharacterAliases: [String: String] = [
+        "grave": "`",
+        "minus": "-",
+        "equal": "=",
+        "leftbracket": "[",
+        "rightbracket": "]",
+        "backslash": "\\",
+        "semicolon": ";",
+        "quote": "'",
+        "comma": ",",
+        "period": ".",
+        "slash": "/"
+    ]
+
+    private static let nonLayoutKeyCodes: [String: Int] = [
         "space": kVK_Space,
         "tab": kVK_Tab,
         "return": kVK_Return,
@@ -167,6 +230,56 @@ enum ShortcutParser {
         "f18": kVK_F18,
         "f19": kVK_F19,
         "f20": kVK_F20
+    ]
+
+    private static let qwertyFallbackKeyCodes: [String: Int] = [
+        "a": kVK_ANSI_A,
+        "b": kVK_ANSI_B,
+        "c": kVK_ANSI_C,
+        "d": kVK_ANSI_D,
+        "e": kVK_ANSI_E,
+        "f": kVK_ANSI_F,
+        "g": kVK_ANSI_G,
+        "h": kVK_ANSI_H,
+        "i": kVK_ANSI_I,
+        "j": kVK_ANSI_J,
+        "k": kVK_ANSI_K,
+        "l": kVK_ANSI_L,
+        "m": kVK_ANSI_M,
+        "n": kVK_ANSI_N,
+        "o": kVK_ANSI_O,
+        "p": kVK_ANSI_P,
+        "q": kVK_ANSI_Q,
+        "r": kVK_ANSI_R,
+        "s": kVK_ANSI_S,
+        "t": kVK_ANSI_T,
+        "u": kVK_ANSI_U,
+        "v": kVK_ANSI_V,
+        "w": kVK_ANSI_W,
+        "x": kVK_ANSI_X,
+        "y": kVK_ANSI_Y,
+        "z": kVK_ANSI_Z,
+        "0": kVK_ANSI_0,
+        "1": kVK_ANSI_1,
+        "2": kVK_ANSI_2,
+        "3": kVK_ANSI_3,
+        "4": kVK_ANSI_4,
+        "5": kVK_ANSI_5,
+        "6": kVK_ANSI_6,
+        "7": kVK_ANSI_7,
+        "8": kVK_ANSI_8,
+        "9": kVK_ANSI_9,
+        "`": kVK_ANSI_Grave,
+        "-": kVK_ANSI_Minus,
+        "=": kVK_ANSI_Equal,
+        "[": kVK_ANSI_LeftBracket,
+        "]": kVK_ANSI_RightBracket,
+        "\\": kVK_ANSI_Backslash,
+        ";": kVK_ANSI_Semicolon,
+        "'": kVK_ANSI_Quote,
+        ",": kVK_ANSI_Comma,
+        ".": kVK_ANSI_Period,
+        "/": kVK_ANSI_Slash
     ]
 }
 

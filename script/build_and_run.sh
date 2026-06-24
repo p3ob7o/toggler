@@ -5,6 +5,11 @@ MODE="${1:-run}"
 APP_NAME="Toggler"
 BUNDLE_ID="com.paolo.Toggler"
 MIN_SYSTEM_VERSION="13.0"
+XCODE_BETA_DEVELOPER_DIR="/Applications/Xcode-beta.app/Contents/Developer"
+
+if [[ -z "${DEVELOPER_DIR:-}" && -d "$XCODE_BETA_DEVELOPER_DIR" ]]; then
+  export DEVELOPER_DIR="$XCODE_BETA_DEVELOPER_DIR"
+fi
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="$ROOT_DIR/dist"
@@ -41,6 +46,8 @@ cat >"$INFO_PLIST" <<PLIST
   <string>$MIN_SYSTEM_VERSION</string>
   <key>LSUIElement</key>
   <true/>
+  <key>NSAppleEventsUsageDescription</key>
+  <string>Toggler uses Apple Events as a fallback to hide the frontmost app assigned to a shortcut.</string>
   <key>NSPrincipalClass</key>
   <string>NSApplication</string>
 </dict>
