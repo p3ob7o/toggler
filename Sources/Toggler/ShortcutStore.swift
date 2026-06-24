@@ -17,10 +17,55 @@ struct ShortcutLoadResult {
 }
 
 final class ShortcutStore {
+    /// A single editable shortcut row, in the file's text form.
+    ///
+    /// `shortcutText` is a canonical token string accepted by `ShortcutParser`
+    /// (the same form `KeyboardShortcut.displayValue` produces), e.g.
+    /// `control+option+shift+command+t`. `appTarget` is the raw value used by
+    /// `AppToggler` (a bundle identifier, app name, or `.app` path).
+    struct Entry: Equatable, Sendable {
+        let shortcutText: String
+        let appTarget: String
+    }
+
     let configURL: URL
 
     init(configURL: URL = ShortcutStore.defaultConfigURL()) {
         self.configURL = configURL
+    }
+
+    /// Writes the given entries to the config file, replacing its contents.
+    ///
+    /// The file is rewritten from scratch, so any hand-written comments are
+    /// not preserved — a short generated header documents this. Each entry is
+    /// serialized as `shortcut = app`, which round-trips back through `load()`.
+    func save(_ entries: [Entry]) throws {
+        let header = """
+        # Toggler shortcuts
+        #
+        # This file is managed by the Toggler Settings window. Saving from
+        # Settings rewrites the whole file, so comments added by hand are not
+        # preserved.
+        #
+        # Format: shortcut = app
+
+        """
+
+        let body = entries
+            .map { "\($0.shortcutText) = \(Self.quoteIfNeeded($0.appTarget))" }
+            .joined(separator: "\n")
+
+        let content = body.isEmpty ? header : header + body + "\n"
+
+        try FileManager.default.createDirectory(
+            at: configURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try content.write(to: configURL, atomically: true, encoding: .utf8)
+    }
+
+    private static func quoteIfNeeded(_ value: String) -> String {
+        value.contains(where: { $0 == " " || $0 == "\t" }) ? "\"\(value)\"" : value
     }
 
     func load() -> ShortcutLoadResult {

@@ -11,6 +11,13 @@ protocol KeyboardShortcutKeyResolving {
     func keyCode(for token: String) -> UInt32?
 }
 
+/// The reverse of `KeyboardShortcutKeyResolving`: maps a virtual key code back
+/// to the layout-correct, unshifted character it produces. Used to turn a
+/// captured key event into a token string the parser can re-parse.
+protocol KeyboardShortcutCharacterResolving {
+    func character(forKeyCode keyCode: UInt16) -> String?
+}
+
 enum ShortcutParser {
     static func parse(
         _ value: String,
@@ -79,11 +86,14 @@ enum ShortcutParser {
     }
 }
 
-struct CurrentKeyboardLayoutKeyResolver: KeyboardShortcutKeyResolving {
+struct CurrentKeyboardLayoutKeyResolver: KeyboardShortcutKeyResolving, KeyboardShortcutCharacterResolving {
     private let layoutKeyCodes: [String: UInt32]?
+    private let layoutCharacters: [UInt32: String]?
 
     init() {
-        layoutKeyCodes = Self.buildLayoutKeyCodes()
+        let layout = Self.buildLayout()
+        layoutKeyCodes = layout?.keyCodes
+        layoutCharacters = layout?.characters
     }
 
     func keyCode(for token: String) -> UInt32? {
@@ -102,6 +112,14 @@ struct CurrentKeyboardLayoutKeyResolver: KeyboardShortcutKeyResolving {
         return Self.qwertyFallbackKeyCodes[character].map(UInt32.init)
     }
 
+    func character(forKeyCode keyCode: UInt16) -> String? {
+        if let layoutCharacters {
+            return layoutCharacters[UInt32(keyCode)]
+        }
+
+        return Self.qwertyFallbackCharacters[UInt32(keyCode)]
+    }
+
     private static func layoutCharacter(for token: String) -> String? {
         if let character = layoutCharacterAliases[token] {
             return character
@@ -110,7 +128,7 @@ struct CurrentKeyboardLayoutKeyResolver: KeyboardShortcutKeyResolving {
         return token.count == 1 ? token : nil
     }
 
-    private static func buildLayoutKeyCodes() -> [String: UInt32]? {
+    private static func buildLayout() -> (keyCodes: [String: UInt32], characters: [UInt32: String])? {
         guard let inputSource = TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue(),
               let rawLayoutData = TISGetInputSourceProperty(inputSource, kTISPropertyUnicodeKeyLayoutData) else {
             return nil
@@ -123,8 +141,10 @@ struct CurrentKeyboardLayoutKeyResolver: KeyboardShortcutKeyResolving {
 
         let keyboardLayout = UnsafeRawPointer(bytes).assumingMemoryBound(to: UCKeyboardLayout.self)
         let keyboardType = UInt32(LMGetKbdType())
-        let modifierStates = [UInt32(0), UInt32(shiftKey >> 8)]
+        let unshifted = UInt32(0)
+        let modifierStates = [unshifted, UInt32(shiftKey >> 8)]
         var keyCodes: [String: UInt32] = [:]
+        var characters: [UInt32: String] = [:]
 
         for keyCode in UInt16(0)..<UInt16(128) {
             for modifierState in modifierStates {
@@ -140,10 +160,17 @@ struct CurrentKeyboardLayoutKeyResolver: KeyboardShortcutKeyResolving {
                 if keyCodes[character] == nil {
                     keyCodes[character] = UInt32(keyCode)
                 }
+
+                // The reverse map stores only the unshifted character so a
+                // recorded key round-trips to its base token (e.g. the "=" key
+                // yields "=", never "+", which would break the token split).
+                if modifierState == unshifted, characters[UInt32(keyCode)] == nil {
+                    characters[UInt32(keyCode)] = character
+                }
             }
         }
 
-        return keyCodes
+        return (keyCodes, characters)
     }
 
     private static func translatedCharacter(
@@ -281,6 +308,16 @@ struct CurrentKeyboardLayoutKeyResolver: KeyboardShortcutKeyResolving {
         ".": kVK_ANSI_Period,
         "/": kVK_ANSI_Slash
     ]
+
+    /// Reverse of `qwertyFallbackKeyCodes`, used when the current layout data
+    /// is unavailable.
+    private static let qwertyFallbackCharacters: [UInt32: String] = {
+        var result: [UInt32: String] = [:]
+        for (character, keyCode) in qwertyFallbackKeyCodes {
+            result[UInt32(keyCode)] = character
+        }
+        return result
+    }()
 }
 
 struct ShortcutParseFailure: LocalizedError {
