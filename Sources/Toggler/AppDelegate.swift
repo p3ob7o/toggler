@@ -7,6 +7,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var hotKeyManager = HotKeyManager { [weak self] message in
         self?.presentNotification(title: "Toggler", body: message)
     }
+    private let hyperkeyPreference = HyperkeyPreference()
+    private lazy var hyperkeyController = HyperkeyController { [weak self] message in
+        self?.presentNotification(title: "Toggler", body: message)
+    }
 
     private var statusItem: NSStatusItem?
     private var bindings: [ShortcutBinding] = []
@@ -16,10 +20,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
         configureStatusItem()
         loadShortcuts()
+        reconcileHyperkeyState()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         hotKeyManager.unregisterAll()
+        hyperkeyController.stop()
     }
 
     private func configureStatusItem() {
@@ -44,6 +50,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func quit() {
         NSApp.terminate(nil)
+    }
+
+    @objc private func toggleHyperkey() {
+        if hyperkeyController.isActive {
+            hyperkeyPreference.isEnabled = false
+            hyperkeyController.stop()
+            presentNotification(title: "Toggler", body: "Caps Lock → Hyperkey disabled. Caps Lock is back to normal.")
+        } else {
+            hyperkeyPreference.isEnabled = true
+            switch hyperkeyController.start() {
+            case .started:
+                presentNotification(title: "Toggler", body: "Caps Lock → Hyperkey enabled. Hold Caps Lock as your Hyper modifier.")
+            case .needsAccessibility:
+                hyperkeyController.requestAccessibility()
+                presentNotification(title: "Toggler", body: "Grant Accessibility access to Toggler, then enable Caps Lock → Hyperkey again.")
+            case .failed(let message):
+                hyperkeyPreference.isEnabled = false
+                presentNotification(title: "Toggler", body: "Could not enable Hyperkey: \(message)")
+            }
+        }
+        rebuildMenu()
+    }
+
+    @objc private func openAccessibilitySettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    /// Brings the controller's actual state in line with the stored preference.
+    private func reconcileHyperkeyState() {
+        if hyperkeyPreference.isEnabled {
+            // Starts only if Accessibility is already granted; otherwise stays inactive
+            // (pending) without nagging the user with a prompt at launch.
+            _ = hyperkeyController.start()
+        } else {
+            // Clear any stale remap left behind if a previous run crashed while active.
+            hyperkeyController.ensureInactive()
+        }
+        rebuildMenu()
     }
 
     private func loadShortcuts() {
@@ -86,6 +132,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let errorItem = NSMenuItem(title: errorTitle, action: nil, keyEquivalent: "")
             errorItem.isEnabled = false
             menu.addItem(errorItem)
+        }
+
+        menu.addItem(.separator())
+
+        let hyperItem = NSMenuItem(title: "Caps Lock → Hyperkey", action: #selector(toggleHyperkey), keyEquivalent: "")
+        hyperItem.state = hyperkeyController.isActive ? .on : .off
+        menu.addItem(hyperItem)
+
+        if hyperkeyPreference.isEnabled, !hyperkeyController.isActive {
+            let hint = NSMenuItem(title: "Needs Accessibility permission…", action: #selector(openAccessibilitySettings), keyEquivalent: "")
+            menu.addItem(hint)
         }
 
         menu.addItem(.separator())

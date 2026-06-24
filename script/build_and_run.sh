@@ -54,6 +54,11 @@ cat >"$INFO_PLIST" <<PLIST
 </plist>
 PLIST
 
+# Ad-hoc sign so the bundle is well-formed for TCC (Accessibility). Note: an ad-hoc
+# signature has no stable identity, so macOS may still reset the Accessibility grant on
+# each rebuild — re-grant Toggler (or toggle it off/on in Settings) after rebuilding.
+codesign --force --sign - "$APP_BUNDLE"
+
 open_app() {
   /usr/bin/open -n "$APP_BUNDLE"
 }
