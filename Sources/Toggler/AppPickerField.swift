@@ -19,20 +19,17 @@ struct AppPickerField: View {
         Button {
             isPresented = true
         } label: {
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
                 icon(for: currentEntry)
-                    .frame(width: 18, height: 18)
-                Text(currentEntry.name.isEmpty ? "Choose app…" : currentEntry.name)
+                    .frame(width: 22, height: 22)
+                Text(currentEntry.name.isEmpty ? "Application name, bundle ID, or path…" : currentEntry.name)
                     .foregroundStyle(currentEntry.name.isEmpty ? .secondary : .primary)
                     .lineLimit(1)
-                Spacer(minLength: 4)
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
             }
             .contentShape(Rectangle())
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(.plain)
         .popover(isPresented: $isPresented, arrowEdge: .bottom) {
             popoverContent
         }

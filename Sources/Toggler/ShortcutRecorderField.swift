@@ -28,6 +28,7 @@ final class RecorderNSView: NSView {
 
     private var isRecording = false
     private var liveModifiers: NSEvent.ModifierFlags = []
+    private var clickOutsideMonitor: Any?
 
     override var acceptsFirstResponder: Bool { true }
 
@@ -35,10 +36,23 @@ final class RecorderNSView: NSView {
         window?.makeFirstResponder(self)
     }
 
+    // Safety net: drop the event monitor if the field leaves its window while
+    // still recording (resignFirstResponder covers the ordinary focus-change path).
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        super.viewWillMove(toWindow: newWindow)
+        if newWindow == nil {
+            stopClickOutsideMonitor()
+        }
+    }
+
     override func becomeFirstResponder() -> Bool {
         isRecording = true
         liveModifiers = []
         needsDisplay = true
+        startClickOutsideMonitor()
+        // Tell AppDelegate to suspend global hotkeys so an existing shortcut
+        // doesn't fire while the user is recording a new one.
+        NotificationCenter.default.post(name: .shortcutRecordingDidBegin, object: nil)
         return true
     }
 
@@ -46,7 +60,34 @@ final class RecorderNSView: NSView {
         isRecording = false
         liveModifiers = []
         needsDisplay = true
+        stopClickOutsideMonitor()
+        NotificationCenter.default.post(name: .shortcutRecordingDidEnd, object: nil)
         return true
+    }
+
+    /// While recording, a click anywhere outside this field ends recording, so
+    /// focus can leave the recorders entirely instead of only hopping between them.
+    private func startClickOutsideMonitor() {
+        stopClickOutsideMonitor()
+        clickOutsideMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.leftMouseDown, .rightMouseDown]
+        ) { [weak self] event in
+            guard let self, let window = self.window, event.window === window else {
+                return event
+            }
+            let point = self.convert(event.locationInWindow, from: nil)
+            if !self.bounds.contains(point) {
+                window.makeFirstResponder(nil)
+            }
+            return event
+        }
+    }
+
+    private func stopClickOutsideMonitor() {
+        if let clickOutsideMonitor {
+            NSEvent.removeMonitor(clickOutsideMonitor)
+            self.clickOutsideMonitor = nil
+        }
     }
 
     override func flagsChanged(with event: NSEvent) {
@@ -126,7 +167,7 @@ final class RecorderNSView: NSView {
             text = preview.isEmpty ? "Type shortcut…" : preview + "…"
             color = .secondaryLabelColor
         } else if displayString.isEmpty {
-            text = "Click to record"
+            text = "Record Shortcut"
             color = .secondaryLabelColor
         } else {
             text = displayString
@@ -162,6 +203,10 @@ enum ShortcutSymbols {
         var result = ""
         for modifier in parts.dropLast() {
             result += symbol(forModifier: modifier)
+        }
+        // A space sets the key apart from the modifier glyphs, e.g. "⌃⌥⇧⌘ T".
+        if !result.isEmpty {
+            result += " "
         }
         result += symbol(forKey: key)
         return result
@@ -206,4 +251,12 @@ enum ShortcutSymbols {
         default: return key.uppercased()
         }
     }
+}
+
+extension Notification.Name {
+    /// Posted while a shortcut recorder is actively capturing keys. `AppDelegate`
+    /// suspends global hotkeys between begin and end so an existing shortcut does
+    /// not fire while the user is recording a new one.
+    static let shortcutRecordingDidBegin = Notification.Name("TogglerShortcutRecordingDidBegin")
+    static let shortcutRecordingDidEnd = Notification.Name("TogglerShortcutRecordingDidEnd")
 }

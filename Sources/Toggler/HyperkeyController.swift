@@ -171,10 +171,7 @@ final class HyperkeyController {
 
     /// Shows the standard system prompt inviting the user to grant Accessibility access.
     func requestAccessibility() {
-        // "AXTrustedCheckOptionPrompt" is the documented value of
-        // kAXTrustedCheckOptionPrompt; the literal avoids SDK import differences.
-        let options = ["AXTrustedCheckOptionPrompt": true] as CFDictionary
-        _ = AXIsProcessTrustedWithOptions(options)
+        requestAccessibilityAccess()
     }
 
     private func teardownTap() {
@@ -223,6 +220,18 @@ final class HyperkeyController {
 
         return Unmanaged.passUnretained(event)
     }
+}
+
+/// Requests macOS Accessibility access. Calling this registers Toggler in the
+/// Accessibility list (initially toggled off) and shows the standard system
+/// prompt, so the user only has to flip the switch on — they never have to add
+/// the app to the list by hand.
+@MainActor
+func requestAccessibilityAccess() {
+    // "AXTrustedCheckOptionPrompt" is the documented value of
+    // kAXTrustedCheckOptionPrompt; the literal avoids SDK import differences.
+    let options = ["AXTrustedCheckOptionPrompt": true] as CFDictionary
+    _ = AXIsProcessTrustedWithOptions(options)
 }
 
 /// Non-capturing C callback bridged to the controller via the opaque `userInfo` pointer,
