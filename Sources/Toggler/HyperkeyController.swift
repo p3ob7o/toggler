@@ -82,6 +82,19 @@ struct HyperkeyPreference {
     }
 }
 
+/// Decides whether `AppDelegate.applySettings` should (re)apply the Hyperkey
+/// enable/disable for a saved settings outcome.
+///
+/// It compares the desired state against the *live* controller state (`isActive`)
+/// — so a Save retries `start()` whenever the feature isn't actually running,
+/// e.g. after Accessibility is granted — and against the stored preference
+/// (`isEnabled`) — so disabling from a stuck enabled-but-inactive state still
+/// clears the preference. Returns `false` only for a true no-op, which is what
+/// avoids re-prompting for Accessibility when nothing changed.
+func shouldApplyHyperkey(desired: Bool, isActive: Bool, isEnabled: Bool) -> Bool {
+    desired != isActive || desired != isEnabled
+}
+
 /// Turns Caps Lock into a Hyperkey (Command+Option+Control+Shift held together).
 ///
 /// Two parts work together:

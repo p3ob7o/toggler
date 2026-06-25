@@ -57,4 +57,36 @@ final class HyperkeyTests: XCTestCase {
 
         XCTAssertTrue(HyperkeyPreference(defaults: defaults).isEnabled)
     }
+
+    // MARK: - applySettings gate decision
+
+    func testShouldApplyWhenEnablingFromInactive() {
+        // The reported regression: preference is already true (set before a failed
+        // start) but the controller never came up. A Save with the toggle ON must
+        // retry start() rather than treat it as an unchanged no-op.
+        XCTAssertTrue(shouldApplyHyperkey(desired: true, isActive: false, isEnabled: true))
+    }
+
+    func testShouldApplyWhenEnablingFreshFromOff() {
+        XCTAssertTrue(shouldApplyHyperkey(desired: true, isActive: false, isEnabled: false))
+    }
+
+    func testShouldNotApplyWhenAlreadyActiveAndEnabled() {
+        // True no-op: avoids re-prompting for Accessibility on an unchanged Save.
+        XCTAssertFalse(shouldApplyHyperkey(desired: true, isActive: true, isEnabled: true))
+    }
+
+    func testShouldApplyWhenDisablingActiveFeature() {
+        XCTAssertTrue(shouldApplyHyperkey(desired: false, isActive: true, isEnabled: true))
+    }
+
+    func testShouldApplyWhenDisablingStuckPreference() {
+        // Preference still true but controller inactive: disabling must run so the
+        // stale preference gets cleared.
+        XCTAssertTrue(shouldApplyHyperkey(desired: false, isActive: false, isEnabled: true))
+    }
+
+    func testShouldNotApplyWhenAlreadyOff() {
+        XCTAssertFalse(shouldApplyHyperkey(desired: false, isActive: false, isEnabled: false))
+    }
 }
