@@ -13,6 +13,7 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "Toggler",
+            exclude: ["Resources"],
             linkerSettings: [
                 .linkedFramework("AppKit"),
                 .linkedFramework("Carbon")

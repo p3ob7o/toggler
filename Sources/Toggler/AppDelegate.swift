@@ -32,7 +32,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func configureStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        if let image = NSImage(systemSymbolName: "keyboard", accessibilityDescription: "Toggler") {
+        if let image = menuBarIcon() {
+            item.button?.image = image
+            item.button?.imagePosition = .imageOnly
+        } else if let image = NSImage(systemSymbolName: "keyboard", accessibilityDescription: "Toggler") {
             item.button?.image = image
             item.button?.imagePosition = .imageOnly
         } else {
@@ -40,6 +43,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         statusItem = item
         rebuildMenu()
+    }
+
+    private func menuBarIcon() -> NSImage? {
+        let image: NSImage
+        if
+            let iconURL = Bundle.main.url(forResource: "MenuBarIconTemplate", withExtension: "png"),
+            let bundledImage = NSImage(contentsOf: iconURL)
+        {
+            image = bundledImage
+        } else {
+            image = drawnMenuBarIcon()
+        }
+
+        image.isTemplate = true
+        image.size = NSSize(width: 18, height: 18)
+        image.accessibilityDescription = "Toggler"
+        return image
+    }
+
+    private func drawnMenuBarIcon() -> NSImage {
+        NSImage(size: NSSize(width: 18, height: 18), flipped: false) { _ in
+            NSColor.black.setFill()
+
+            let path = NSBezierPath()
+            path.windingRule = .evenOdd
+            path.appendRoundedRect(
+                NSRect(x: 2, y: 2, width: 14, height: 14),
+                xRadius: 2.5,
+                yRadius: 2.5
+            )
+            path.appendRect(NSRect(x: 5, y: 11, width: 8, height: 2))
+            path.appendRect(NSRect(x: 8, y: 5, width: 2, height: 8))
+            path.fill()
+
+            return true
+        }
     }
 
     @objc private func reloadShortcuts() {

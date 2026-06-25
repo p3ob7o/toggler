@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-label="Toggler T key dark mode app icon">
+  <rect width="1024" height="1024" fill="#08090A"/>
+
+  <rect x="70" y="74" width="884" height="884" rx="88" fill="#010203"/>
+  <rect x="92" y="82" width="840" height="840" rx="76" fill="#121416"/>
+  <rect x="116" y="104" width="792" height="792" rx="62" fill="#262A2D"/>
+  <rect x="138" y="126" width="748" height="748" rx="48" fill="#303437"/>
+  <rect x="152" y="140" width="720" height="720" rx="38" fill="none" stroke="#3A3E42" stroke-width="10"/>
+
+  <path d="M414 370h196v34h-80v248h-36V404h-80v-34Z" fill="#F2F4F5"/>
+</svg>
