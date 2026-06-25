@@ -37,7 +37,23 @@ rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_MACOS" "$APP_RESOURCES"
 cp "$BUILD_BINARY" "$APP_BINARY"
 chmod +x "$APP_BINARY"
-cp -X "$RESOURCE_DIR/AppIcon.icns" "$APP_RESOURCES/AppIcon.icns"
+# App icon: prefer compiling the Icon Composer source (AppIcon.icon) so the bundle
+# gets the modern asset catalog (Assets.car + CFBundleIconName) alongside a classic
+# AppIcon.icns. Fall back to the committed AppIcon.icns when actool or the source is
+# unavailable.
+if [[ -d "$RESOURCE_DIR/AppIcon.icon" ]] && xcrun --find actool >/dev/null 2>&1; then
+  xcrun actool "$RESOURCE_DIR/AppIcon.icon" \
+    --compile "$APP_RESOURCES" \
+    --app-icon AppIcon \
+    --output-partial-info-plist "$DIST_DIR/AppIcon-partial.plist" \
+    --platform macosx \
+    --minimum-deployment-target "$MIN_SYSTEM_VERSION" \
+    --target-device mac \
+    --output-format human-readable-text \
+    --errors --warnings >/dev/null
+else
+  cp -X "$RESOURCE_DIR/AppIcon.icns" "$APP_RESOURCES/AppIcon.icns"
+fi
 cp -X "$RESOURCE_DIR/MenuBarIconTemplate.png" "$APP_RESOURCES/MenuBarIconTemplate.png"
 
 cat >"$INFO_PLIST" <<PLIST
@@ -51,6 +67,8 @@ cat >"$INFO_PLIST" <<PLIST
   <string>$BUNDLE_ID</string>
   <key>CFBundleIconFile</key>
   <string>AppIcon.icns</string>
+  <key>CFBundleIconName</key>
+  <string>AppIcon</string>
   <key>CFBundleName</key>
   <string>$APP_NAME</string>
   <key>CFBundleDisplayName</key>
