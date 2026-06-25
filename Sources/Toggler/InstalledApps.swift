@@ -11,10 +11,13 @@ struct InstalledApp: Identifiable, Sendable, Hashable {
     let bundleID: String?
     let path: String
 
-    /// The value stored in a shortcut binding. The bundle identifier is the
-    /// most stable target for `AppToggler` to resolve; the path is the
-    /// fallback when an app has no identifier.
-    var targetRawValue: String { bundleID ?? path }
+    /// The value written to the shortcuts file when this app is chosen. The full
+    /// `.app` path is used (not the bundle identifier) so the file records the
+    /// exact app the user picked: bundle identifiers can be opaque or shared
+    /// (e.g. Notion Calendar reports `com.cron.electron`), whereas the path is
+    /// unambiguous and human-readable. `AppToggler` resolves `.app` paths
+    /// directly.
+    var targetRawValue: String { path }
 }
 
 /// Scans well-known application directories for `.app` bundles.

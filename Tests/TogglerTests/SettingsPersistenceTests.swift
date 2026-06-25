@@ -66,7 +66,7 @@ final class SettingsPersistenceTests: XCTestCase {
         XCTAssertEqual(bar.targetRawValue, bar.path)
 
         let foo = try XCTUnwrap(apps.first { $0.bundleID == "com.test.foo" })
-        XCTAssertEqual(foo.targetRawValue, "com.test.foo")
+        XCTAssertEqual(foo.targetRawValue, foo.path)
     }
 
     private func makeBundle(in root: URL, name: String, displayName: String, bundleID: String) throws {

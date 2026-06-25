@@ -52,7 +52,7 @@ final class ShortcutStore {
         """
 
         let body = entries
-            .map { "\($0.shortcutText) = \(Self.quoteIfNeeded($0.appTarget))" }
+            .map { "\(Self.fileShortcut(for: $0.shortcutText)) = \(Self.quoteIfNeeded($0.appTarget))" }
             .joined(separator: "\n")
 
         let content = body.isEmpty ? header : header + body + "\n"
@@ -66,6 +66,20 @@ final class ShortcutStore {
 
     private static func quoteIfNeeded(_ value: String) -> String {
         value.contains(where: { $0 == " " || $0 == "\t" }) ? "\"\(value)\"" : value
+    }
+
+    /// Collapses a full `control+option+shift+command` set to the `hyper`
+    /// shorthand when serializing (e.g. `hyper+t`), matching the sample config
+    /// and README. Other combinations are written verbatim. Round-trips, since
+    /// `ShortcutParser` expands `hyper` back to all four modifiers.
+    private static func fileShortcut(for shortcutText: String) -> String {
+        let parts = shortcutText.split(separator: "+").map(String.init)
+        guard let key = parts.last else { return shortcutText }
+        let modifiers = Set(parts.dropLast())
+        if modifiers.isSuperset(of: ["control", "option", "shift", "command"]) {
+            return "hyper+\(key)"
+        }
+        return shortcutText
     }
 
     func load() -> ShortcutLoadResult {

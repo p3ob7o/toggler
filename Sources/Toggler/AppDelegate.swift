@@ -22,6 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         configureStatusItem()
         loadShortcuts()
         reconcileHyperkeyState()
+        observeShortcutRecording()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -136,10 +137,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         bindings = result.bindings
         parseErrors = result.errors
 
-        let activeBindings = SettingsDefaults.isEnabled ? bindings : []
-        hotKeyManager.register(activeBindings) { [weak self] binding in
-            self?.appToggler.toggle(binding.target)
-        }
+        resumeHotKeys()
 
         rebuildMenu()
 
@@ -149,6 +147,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 body: "No active shortcuts found. Edit \(shortcutStore.configURL.path(percentEncoded: false))."
             )
         }
+    }
+
+    /// Registers the current in-memory bindings (honoring the enabled flag). Also
+    /// used to restore shortcuts after they are suspended during recording.
+    private func resumeHotKeys() {
+        let activeBindings = SettingsDefaults.isEnabled ? bindings : []
+        hotKeyManager.register(activeBindings) { [weak self] binding in
+            self?.appToggler.toggle(binding.target)
+        }
+    }
+
+    /// While a shortcut recorder in Settings is capturing keys, suspend global
+    /// hotkeys so an existing shortcut doesn't fire as the user records a new one.
+    private func observeShortcutRecording() {
+        let center = NotificationCenter.default
+        center.addObserver(
+            self,
+            selector: #selector(suspendHotKeysForRecording),
+            name: .shortcutRecordingDidBegin,
+            object: nil
+        )
+        center.addObserver(
+            self,
+            selector: #selector(resumeHotKeysAfterRecording),
+            name: .shortcutRecordingDidEnd,
+            object: nil
+        )
+    }
+
+    @objc private func suspendHotKeysForRecording() {
+        hotKeyManager.unregisterAll()
+    }
+
+    @objc private func resumeHotKeysAfterRecording() {
+        resumeHotKeys()
     }
 
     private func rebuildMenu() {
