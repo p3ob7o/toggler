@@ -23,6 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         loadShortcuts()
         reconcileHyperkeyState()
         observeShortcutRecording()
+        observeAppActivation()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -118,10 +119,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // and re-registers shortcuts, honoring it.
         loadShortcuts()
 
-        // Drive the real Hyperkey feature only when the desired state differs
-        // from what's stored, so re-saving an unchanged setting doesn't re-prompt
-        // for Accessibility.
-        if outcome.hyperkeyEnabled != hyperkeyPreference.isEnabled {
+        // Re-apply when the live feature state doesn't match what the user asked
+        // for, OR when only the stored preference is stale. Comparing against the
+        // live controller (not just the stored preference) lets a Save retry
+        // start() after Accessibility is granted — the case that previously left
+        // the feature stuck "enabled" but inactive. A true no-op still skips, so
+        // re-saving an unchanged setting doesn't re-prompt for Accessibility.
+        if shouldApplyHyperkey(
+            desired: outcome.hyperkeyEnabled,
+            isActive: hyperkeyController.isActive,
+            isEnabled: hyperkeyPreference.isEnabled
+        ) {
             setHyperkeyEnabled(outcome.hyperkeyEnabled)
         }
     }
@@ -169,6 +177,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             hyperkeyController.ensureInactive()
         }
         rebuildMenu()
+    }
+
+    /// Watches for the app regaining active status so the Hyperkey can start the
+    /// moment Accessibility is granted — returning to Toggler from System Settings
+    /// reactivates it. This self-heals the feature without a second Save and even
+    /// when access is granted outside the Settings window.
+    private func observeAppActivation() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(retryHyperkeyIfNeeded),
+            name: NSApplication.didBecomeActiveNotification,
+            object: nil
+        )
+    }
+
+    /// Retries `start()` only when the feature is enabled-in-preference but not
+    /// actually running. The guard makes it a no-op when off or already active,
+    /// and `start()` returns `.needsAccessibility` quietly (no prompt) when access
+    /// still isn't granted, so frequent activations never spam the user.
+    @objc private func retryHyperkeyIfNeeded() {
+        guard hyperkeyPreference.isEnabled, !hyperkeyController.isActive else { return }
+        if case .started = hyperkeyController.start() {
+            presentNotification(title: "Toggler", body: "Caps Lock → Hyperkey is now active.")
+            rebuildMenu()
+        }
     }
 
     private func loadShortcuts() {
