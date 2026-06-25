@@ -30,9 +30,18 @@ final class RecorderNSView: NSView {
     private var liveModifiers: NSEvent.ModifierFlags = []
     private var clickOutsideMonitor: Any?
 
-    override var acceptsFirstResponder: Bool { true }
+    // Only accept first responder after an explicit click. This keeps the window
+    // from auto-focusing the first recorder (and starting to record) when Settings
+    // opens; AppKit otherwise picks the first acceptsFirstResponder view as the
+    // initial first responder.
+    private var wantsFirstResponder = false
+
+    override var acceptsFirstResponder: Bool { wantsFirstResponder }
 
     override func mouseDown(with event: NSEvent) {
+        // Set before makeFirstResponder: AppKit checks acceptsFirstResponder at the
+        // moment of the call, so it must already be true.
+        wantsFirstResponder = true
         window?.makeFirstResponder(self)
     }
 
@@ -58,6 +67,7 @@ final class RecorderNSView: NSView {
 
     override func resignFirstResponder() -> Bool {
         isRecording = false
+        wantsFirstResponder = false
         liveModifiers = []
         needsDisplay = true
         stopClickOutsideMonitor()
