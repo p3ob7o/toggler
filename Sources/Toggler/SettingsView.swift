@@ -19,6 +19,14 @@ struct SettingsView: View {
     /// Invoked to dismiss the window (Cancel, or a successful Save).
     var onClose: () -> Void
 
+    /// Stable id for the scroll anchor just past the last row; the header "+"
+    /// scrolls here to reveal the trailing empty row where a shortcut is added.
+    private let bottomAnchorID = "shortcuts-bottom"
+
+    /// Width of the always-on scrollbar gutter the table reserves. The header
+    /// reserves the same so the "+" lines up over the row trash column.
+    private let scrollbarGutter: CGFloat = 15
+
     var body: some View {
         VStack(spacing: 0) {
             // Pinned top: the app/Hyperkey switches stay visible no matter how
@@ -65,39 +73,73 @@ struct SettingsView: View {
             // Shortcuts live in a fixed-size table that scrolls internally: the
             // header and the table frame stay put, and only the rows scroll, with
             // the scrollbar inside the table's own border.
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Shortcuts")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .textCase(.uppercase)
-                    .padding(.leading, 4)
+            ScrollViewReader { proxy in
+                VStack(alignment: .leading, spacing: 6) {
+                    // Header: title on the left, and a "+" lined up over the row
+                    // trash column that scrolls the table down to the empty row.
+                    HStack(spacing: 0) {
+                        Text("Shortcuts")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .textCase(.uppercase)
+                            .padding(.leading, 16)
 
-                ScrollView {
-                    VStack(spacing: 0) {
-                        ForEach($viewModel.rows) { $row in
-                            rowView(row: $row)
-                                .padding(.horizontal, 14)
+                        Spacer(minLength: 0)
 
-                            if row.id != viewModel.rows.last?.id {
-                                Divider()
-                                    .padding(.leading, 14)
+                        Button {
+                            withAnimation {
+                                proxy.scrollTo(bottomAnchorID, anchor: .bottom)
                             }
+                        } label: {
+                            Image(systemName: "plus")
+                                .imageScale(.medium)
                         }
+                        .buttonStyle(.borderless)
+                        .foregroundStyle(.secondary)
+                        .help("Add a shortcut")
+                        // Trailing inset matches the row's trash slot padding so the
+                        // "+" centers over the trash column.
+                        .frame(width: 22)
+                        .padding(.trailing, 14)
                     }
-                    .padding(.vertical, 6)
+                    // The rows live inside the ScrollView, which reserves a gutter
+                    // for the scrollbar; reserve the same here so the header "+"
+                    // lands directly above the trash column instead of the gutter.
+                    .padding(.trailing, scrollbarGutter)
+
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            ForEach($viewModel.rows) { $row in
+                                rowView(row: $row)
+                                    .padding(.horizontal, 14)
+
+                                if row.id != viewModel.rows.last?.id {
+                                    Divider()
+                                        .padding(.leading, 14)
+                                }
+                            }
+
+                            // Scroll target for the header "+"; sits just past the
+                            // last (empty) row.
+                            Color.clear
+                                .frame(height: 1)
+                                .id(bottomAnchorID)
+                        }
+                        .padding(.vertical, 6)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    // Match the grouped Form card: same elevated fill and corner
+                    // radius, with only a hairline edge instead of a hard border.
+                    .background(
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(Color(nsColor: .controlBackgroundColor))
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .strokeBorder(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1)
+                    )
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                // Match the grouped Form card: same elevated fill and corner
-                // radius, with only a hairline edge instead of a hard border.
-                .background(
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(Color(nsColor: .controlBackgroundColor))
-                )
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .strokeBorder(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1)
-                )
             }
             // When the app is off, the design dims and disables the list.
             .opacity(viewModel.isEnabled ? 1 : 0.4)
