@@ -46,7 +46,8 @@ struct SettingsView: View {
                         Toggle(isOn: $viewModel.hyperkeyEnabled) {
                             labeledToggle(
                                 "Use Hyperkey",
-                                subtitle: "Treat the caps lock key as ⌘⌥⌃⇧."
+                                subtitle: "Treat the caps lock key as ✦ (⌃⌥⇧⌘).",
+                                trailingSymbol: ShortcutSymbols.hyperSymbol
                             )
                         }
                         .toggleStyle(.switch)
@@ -185,10 +186,18 @@ struct SettingsView: View {
         }
     }
 
-    /// Title above a secondary caption, the label used by both switches.
-    private func labeledToggle(_ title: String, subtitle: String) -> some View {
+    /// Title above a secondary caption, the label used by both switches. An
+    /// optional `trailingSymbol` is shown next to the title (e.g. the ✦ Hyperkey
+    /// glyph).
+    private func labeledToggle(_ title: String, subtitle: String, trailingSymbol: String? = nil) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(title)
+            HStack(spacing: 6) {
+                Text(title)
+                if let trailingSymbol {
+                    Text(trailingSymbol)
+                        .foregroundStyle(.secondary)
+                }
+            }
             Text(subtitle)
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -213,7 +222,7 @@ struct SettingsView: View {
             AppPickerField(appTarget: row.appTarget, appsModel: appsModel)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            ShortcutRecorderField(shortcutText: row.shortcutText)
+            ShortcutRecorderField(shortcutText: row.shortcutText, hyperkeyEnabled: viewModel.hyperkeyEnabled)
                 .frame(width: 150, height: 26)
                 // Overlaid (not laid out) so an invalid row doesn't shift the
                 // recorder column out of alignment with the other rows.
