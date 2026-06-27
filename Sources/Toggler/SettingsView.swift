@@ -21,6 +21,9 @@ struct SettingsView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // Pinned top: the app/Hyperkey switches stay visible no matter how
+            // long the shortcuts list grows. Scroll is disabled and the form is
+            // sized to its content so it never steals the scroll from the table.
             Form {
                 Section {
                     Toggle(isOn: $viewModel.isEnabled) {
@@ -54,22 +57,55 @@ struct SettingsView: View {
                         }
                     }
                 }
-
-                Section {
-                    ForEach($viewModel.rows) { $row in
-                        rowView(row: $row)
-                    }
-                } header: {
-                    Text("Shortcuts")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .textCase(.uppercase)
-                }
-                // When the app is off, the design dims and disables the list.
-                .opacity(viewModel.isEnabled ? 1 : 0.4)
-                .disabled(!viewModel.isEnabled)
             }
             .formStyle(.grouped)
+            .scrollDisabled(true)
+            .fixedSize(horizontal: false, vertical: true)
+
+            // Shortcuts live in a fixed-size table that scrolls internally: the
+            // header and the table frame stay put, and only the rows scroll, with
+            // the scrollbar inside the table's own border.
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Shortcuts")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textCase(.uppercase)
+                    .padding(.leading, 4)
+
+                ScrollView {
+                    VStack(spacing: 0) {
+                        ForEach($viewModel.rows) { $row in
+                            rowView(row: $row)
+                                .padding(.horizontal, 14)
+
+                            if row.id != viewModel.rows.last?.id {
+                                Divider()
+                                    .padding(.leading, 14)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 6)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                // Match the grouped Form card: same elevated fill and corner
+                // radius, with only a hairline edge instead of a hard border.
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color(nsColor: .controlBackgroundColor))
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .strokeBorder(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1)
+                )
+            }
+            // When the app is off, the design dims and disables the list.
+            .opacity(viewModel.isEnabled ? 1 : 0.4)
+            .disabled(!viewModel.isEnabled)
+            .frame(maxHeight: .infinity)
+            .padding(.horizontal, 20)
+            .padding(.top, 8)
+            .padding(.bottom, 18)
 
             Divider()
 
