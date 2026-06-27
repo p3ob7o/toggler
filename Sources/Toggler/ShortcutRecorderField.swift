@@ -6,6 +6,9 @@ import SwiftUI
 /// form the parser/`displayValue` use) bound to `shortcutText`.
 struct ShortcutRecorderField: NSViewRepresentable {
     @Binding var shortcutText: String
+    /// When true, the full ⌃⌥⇧⌘ combo renders as ✦; when false it expands back
+    /// to the four glyphs. Driven by the "Use Hyperkey" toggle.
+    var hyperkeyEnabled: Bool
 
     func makeNSView(context: Context) -> RecorderNSView {
         let view = RecorderNSView()
@@ -15,7 +18,8 @@ struct ShortcutRecorderField: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: RecorderNSView, context: Context) {
-        nsView.displayString = ShortcutSymbols.display(for: shortcutText)
+        nsView.useHyperSymbol = hyperkeyEnabled
+        nsView.displayString = ShortcutSymbols.display(for: shortcutText, hyperkeyEnabled: hyperkeyEnabled)
         nsView.needsDisplay = true
     }
 }
@@ -23,6 +27,9 @@ struct ShortcutRecorderField: NSViewRepresentable {
 /// First-responder NSView that captures a modifier+key chord while focused.
 final class RecorderNSView: NSView {
     var displayString = ""
+    /// Mirrors the "Use Hyperkey" toggle; controls whether the live preview
+    /// collapses the full combo to ✦.
+    var useHyperSymbol = false
     var onCommit: ((String) -> Void)?
     var onClear: (() -> Void)?
 
@@ -173,7 +180,7 @@ final class RecorderNSView: NSView {
         let text: String
         let color: NSColor
         if isRecording {
-            let preview = ShortcutSymbols.modifierSymbols(for: liveModifiers)
+            let preview = ShortcutSymbols.modifierSymbols(for: liveModifiers, hyperkeyEnabled: useHyperSymbol)
             text = preview.isEmpty ? "Type shortcut…" : preview + "…"
             color = .secondaryLabelColor
         } else if displayString.isEmpty {
@@ -205,16 +212,17 @@ final class RecorderNSView: NSView {
 
 /// Formats canonical shortcut tokens as human-readable key symbols.
 enum ShortcutSymbols {
-    static func display(for token: String) -> String {
+    /// The Hyperkey glyph (U+2726, BLACK FOUR POINTED STAR) shown in place of the
+    /// full ⌃⌥⇧⌘ combo.
+    static let hyperSymbol = "✦"
+
+    static func display(for token: String, hyperkeyEnabled: Bool) -> String {
         guard !token.isEmpty else { return "" }
         let parts = token.split(separator: "+").map(String.init)
         guard let key = parts.last else { return "" }
 
-        var result = ""
-        for modifier in parts.dropLast() {
-            result += symbol(forModifier: modifier)
-        }
-        // A space sets the key apart from the modifier glyphs, e.g. "⌃⌥⇧⌘ T".
+        var result = modifierSymbols(forTokens: Array(parts.dropLast()), hyperkeyEnabled: hyperkeyEnabled)
+        // A space sets the key apart from the modifier glyph(s), e.g. "✦ T".
         if !result.isEmpty {
             result += " "
         }
@@ -222,13 +230,32 @@ enum ShortcutSymbols {
         return result
     }
 
-    static func modifierSymbols(for flags: NSEvent.ModifierFlags) -> String {
+    static func modifierSymbols(for flags: NSEvent.ModifierFlags, hyperkeyEnabled: Bool) -> String {
+        if hyperkeyEnabled, isHyper(flags) { return hyperSymbol }
         var result = ""
         if flags.contains(.control) { result += "⌃" }
         if flags.contains(.option) { result += "⌥" }
         if flags.contains(.shift) { result += "⇧" }
         if flags.contains(.command) { result += "⌘" }
         return result
+    }
+
+    /// With Hyperkey on, the full ⌃⌥⇧⌘ combo (or an explicit `hyper` token)
+    /// collapses to ✦; otherwise every modifier maps to its own glyph.
+    private static func modifierSymbols(forTokens modifiers: [String], hyperkeyEnabled: Bool) -> String {
+        if hyperkeyEnabled, isHyper(modifiers) { return hyperSymbol }
+        return modifiers.map(symbol(forModifier:)).joined()
+    }
+
+    private static func isHyper(_ modifiers: [String]) -> Bool {
+        if modifiers.contains(where: { $0 == "hyper" || $0 == "hyperkey" }) { return true }
+        let set = Set(modifiers)
+        return ["control", "option", "shift", "command"].allSatisfy(set.contains)
+    }
+
+    private static func isHyper(_ flags: NSEvent.ModifierFlags) -> Bool {
+        flags.contains(.control) && flags.contains(.option)
+            && flags.contains(.shift) && flags.contains(.command)
     }
 
     private static func symbol(forModifier modifier: String) -> String {
