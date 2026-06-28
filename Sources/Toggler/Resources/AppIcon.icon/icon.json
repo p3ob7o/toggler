@@ -6,7 +6,27 @@
     ]
   },
   "groups" : [
-
+    {
+      "layers" : [
+        {
+          "blend-mode" : "normal",
+          "fill" : {
+            "solid" : "srgb:0.75407,0.75409,0.75408,1.00000"
+          },
+          "image-name" : "hyper.svg",
+          "name" : "hyper"
+        }
+      ],
+      "name" : "Group",
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.6
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.2
+      }
+    }
   ],
   "supported-platforms" : {
     "circles" : [
