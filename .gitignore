@@ -6,6 +6,8 @@
 
 # Local app bundles and build products
 dist/
+# xcodebuild output: DerivedData (dev builds) + release archives/exports
+/build/
 
 # Generated Xcode project (XcodeGen — project.yml is the source of truth).
 # Glob covers macOS/iCloud collision copies like "Toggler 2.xcodeproj".
