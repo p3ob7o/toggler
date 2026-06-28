@@ -33,53 +33,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func configureStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        if let image = menuBarIcon() {
-            item.button?.image = image
-            item.button?.imagePosition = .imageOnly
-        } else if let image = NSImage(systemSymbolName: "keyboard", accessibilityDescription: "Toggler") {
-            item.button?.image = image
-            item.button?.imagePosition = .imageOnly
-        } else {
-            item.button?.title = "T"
+        if let button = item.button {
+            // The menu bar item is just the Hyperkey glyph (✦). A title (not an
+            // image) lets it adopt the menu bar's text color and selection
+            // highlight automatically in both light and dark menu bars.
+            button.image = nil
+            // Geometrically centered, but ✦'s visual mass sits high so it reads as
+            // too high; a negative baseline offset nudges it down ~2pt to optically
+            // center it. (No foreground color, so it keeps the menu bar's adaptive
+            // text color and selection highlight.)
+            button.attributedTitle = NSAttributedString(
+                string: ShortcutSymbols.hyperSymbol,
+                attributes: [
+                    .font: NSFont.systemFont(ofSize: 17.25),
+                    .baselineOffset: -2
+                ]
+            )
+            button.setAccessibilityLabel("Toggler")
         }
         statusItem = item
         rebuildMenu()
-    }
-
-    private func menuBarIcon() -> NSImage? {
-        let image: NSImage
-        if
-            let iconURL = Bundle.main.url(forResource: "MenuBarIconTemplate", withExtension: "png"),
-            let bundledImage = NSImage(contentsOf: iconURL)
-        {
-            image = bundledImage
-        } else {
-            image = drawnMenuBarIcon()
-        }
-
-        image.isTemplate = true
-        image.size = NSSize(width: 18, height: 18)
-        image.accessibilityDescription = "Toggler"
-        return image
-    }
-
-    private func drawnMenuBarIcon() -> NSImage {
-        NSImage(size: NSSize(width: 18, height: 18), flipped: false) { _ in
-            NSColor.black.setFill()
-
-            let path = NSBezierPath()
-            path.windingRule = .evenOdd
-            path.appendRoundedRect(
-                NSRect(x: 2, y: 2, width: 14, height: 14),
-                xRadius: 2.5,
-                yRadius: 2.5
-            )
-            path.appendRect(NSRect(x: 5, y: 11, width: 8, height: 2))
-            path.appendRect(NSRect(x: 8, y: 5, width: 2, height: 8))
-            path.fill()
-
-            return true
-        }
     }
 
     @objc private func reloadShortcuts() {
