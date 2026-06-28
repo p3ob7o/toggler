@@ -1,0 +1,63 @@
+name: Toggler
+options:
+  bundleIdPrefix: com.paolo
+  deploymentTarget:
+    macOS: "13.0"
+  developmentLanguage: en
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "0.2.0"
+    CURRENT_PROJECT_VERSION: "1"
+    GENERATE_INFOPLIST_FILE: "YES"
+    # Dev builds are ad-hoc signed; the Developer ID + notarized path is handled
+    # by the release script.
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGNING_REQUIRED: "NO"
+
+targets:
+  Toggler:
+    type: application
+    platform: macOS
+    deploymentTarget: "13.0"
+    sources:
+      # All Swift sources; the legacy Resources (unused .icns/.png/.svg and the
+      # menu-bar template) are excluded — the menu bar is now the ✦ glyph and the
+      # app icon comes from AppIcon.icon below.
+      - path: Sources/Toggler
+        excludes:
+          - "Resources"
+      # The Icon Composer app icon, compiled by Xcode's asset pipeline.
+      - path: Sources/Toggler/Resources/AppIcon.icon
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.paolo.Toggler
+        PRODUCT_NAME: Toggler
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        INFOPLIST_KEY_LSUIElement: "YES"
+        INFOPLIST_KEY_NSPrincipalClass: NSApplication
+        INFOPLIST_KEY_NSAppleEventsUsageDescription: "Toggler uses Apple Events as a fallback to hide the frontmost app assigned to a shortcut."
+        INFOPLIST_KEY_NSHumanReadableCopyright: "Copyright © 2026 Paolo Belcastro."
+    dependencies:
+      - sdk: Carbon.framework
+    postBuildScripts:
+      # Finder/Icon Services stamp app bundles (and the .icon source) with
+      # com.apple.FinderInfo / tags, which makes codesign fail with "resource
+      # fork, Finder information, or similar detritus not allowed". Strip all
+      # extended attributes from the product right before the implicit CodeSign.
+      - name: Strip extended attributes
+        script: /usr/bin/xattr -cr "${CODESIGNING_FOLDER_PATH}"
+        basedOnDependencyAnalysis: false
+
+schemes:
+  Toggler:
+    build:
+      targets:
+        Toggler: all
+    run:
+      config: Debug
+    archive:
+      config: Release

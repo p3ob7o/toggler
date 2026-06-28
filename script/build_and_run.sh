@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
+# Build (and optionally run) Toggler via Xcode. The Xcode project is generated
+# from project.yml by XcodeGen; this script regenerates it when needed, then
+# builds with xcodebuild. Xcode owns icon compilation, Info.plist, signing, etc.
 set -euo pipefail
 
 MODE="${1:-run}"
 APP_NAME="Toggler"
+SCHEME="Toggler"
+CONFIG="Debug"
 BUNDLE_ID="com.paolo.Toggler"
-MIN_SYSTEM_VERSION="13.0"
 XCODE_BETA_DEVELOPER_DIR="/Applications/Xcode-beta.app/Contents/Developer"
 
 if [[ -z "${DEVELOPER_DIR:-}" && -d "$XCODE_BETA_DEVELOPER_DIR" ]]; then
@@ -12,90 +16,23 @@ if [[ -z "${DEVELOPER_DIR:-}" && -d "$XCODE_BETA_DEVELOPER_DIR" ]]; then
 fi
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DIST_DIR="$ROOT_DIR/dist"
-APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
-APP_CONTENTS="$APP_BUNDLE/Contents"
-APP_MACOS="$APP_CONTENTS/MacOS"
-APP_RESOURCES="$APP_CONTENTS/Resources"
-APP_BINARY="$APP_MACOS/$APP_NAME"
-INFO_PLIST="$APP_CONTENTS/Info.plist"
-RESOURCE_DIR="$ROOT_DIR/Sources/Toggler/Resources"
-APP_VERSION="$(
-  git describe --tags --exact-match --abbrev=0 2>/dev/null \
-    || git describe --tags --abbrev=0 2>/dev/null \
-    || printf '0.0.0'
-)"
-APP_VERSION="${APP_VERSION#v}"
+PROJECT="$ROOT_DIR/$APP_NAME.xcodeproj"
+DERIVED="$ROOT_DIR/build/DerivedData"
+APP_BUNDLE="$DERIVED/Build/Products/$CONFIG/$APP_NAME.app"
+
+# Regenerate the Xcode project when it's missing or project.yml is newer.
+if [[ ! -d "$PROJECT" || "$ROOT_DIR/project.yml" -nt "$PROJECT" ]]; then
+  "$ROOT_DIR/script/bootstrap.sh"
+fi
 
 pkill -x "$APP_NAME" >/dev/null 2>&1 || true
 
-swift build
-BUILD_DIR="$(swift build --show-bin-path)"
-BUILD_BINARY="$BUILD_DIR/$APP_NAME"
-
-rm -rf "$APP_BUNDLE"
-mkdir -p "$APP_MACOS" "$APP_RESOURCES"
-cp "$BUILD_BINARY" "$APP_BINARY"
-chmod +x "$APP_BINARY"
-# App icon: prefer compiling the Icon Composer source (AppIcon.icon) so the bundle
-# gets the modern asset catalog (Assets.car + CFBundleIconName) alongside a classic
-# AppIcon.icns. Fall back to the committed AppIcon.icns when actool or the source is
-# unavailable.
-if [[ -d "$RESOURCE_DIR/AppIcon.icon" ]] && xcrun --find actool >/dev/null 2>&1; then
-  xcrun actool "$RESOURCE_DIR/AppIcon.icon" \
-    --compile "$APP_RESOURCES" \
-    --app-icon AppIcon \
-    --output-partial-info-plist "$DIST_DIR/AppIcon-partial.plist" \
-    --platform macosx \
-    --minimum-deployment-target "$MIN_SYSTEM_VERSION" \
-    --target-device mac \
-    --output-format human-readable-text \
-    --errors --warnings >/dev/null
-else
-  cp -X "$RESOURCE_DIR/AppIcon.icns" "$APP_RESOURCES/AppIcon.icns"
-fi
-cp -X "$RESOURCE_DIR/MenuBarIconTemplate.png" "$APP_RESOURCES/MenuBarIconTemplate.png"
-
-cat >"$INFO_PLIST" <<PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>CFBundleExecutable</key>
-  <string>$APP_NAME</string>
-  <key>CFBundleIdentifier</key>
-  <string>$BUNDLE_ID</string>
-  <key>CFBundleIconFile</key>
-  <string>AppIcon.icns</string>
-  <key>CFBundleIconName</key>
-  <string>AppIcon</string>
-  <key>CFBundleName</key>
-  <string>$APP_NAME</string>
-  <key>CFBundleDisplayName</key>
-  <string>$APP_NAME</string>
-  <key>CFBundleShortVersionString</key>
-  <string>$APP_VERSION</string>
-  <key>CFBundleVersion</key>
-  <string>$APP_VERSION</string>
-  <key>CFBundlePackageType</key>
-  <string>APPL</string>
-  <key>LSMinimumSystemVersion</key>
-  <string>$MIN_SYSTEM_VERSION</string>
-  <key>LSUIElement</key>
-  <true/>
-  <key>NSAppleEventsUsageDescription</key>
-  <string>Toggler uses Apple Events as a fallback to hide the frontmost app assigned to a shortcut.</string>
-  <key>NSPrincipalClass</key>
-  <string>NSApplication</string>
-</dict>
-</plist>
-PLIST
-
-# Ad-hoc sign so the bundle is well-formed for TCC (Accessibility). Note: an ad-hoc
-# signature has no stable identity, so macOS may still reset the Accessibility grant on
-# each rebuild — re-grant Toggler (or toggle it off/on in Settings) after rebuilding.
-xattr -cr "$APP_BUNDLE"
-codesign --force --sign - "$APP_BUNDLE"
+xcodebuild \
+  -project "$PROJECT" \
+  -scheme "$SCHEME" \
+  -configuration "$CONFIG" \
+  -derivedDataPath "$DERIVED" \
+  build
 
 open_app() {
   /usr/bin/open -n "$APP_BUNDLE"
@@ -108,7 +45,7 @@ case "$MODE" in
     open_app
     ;;
   --debug|debug)
-    lldb -- "$APP_BINARY"
+    lldb -- "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
     ;;
   --logs|logs)
     open_app
