@@ -7,6 +7,10 @@
 # Local app bundles and build products
 dist/
 
+# Generated Xcode project (XcodeGen — project.yml is the source of truth).
+# Glob covers macOS/iCloud collision copies like "Toggler 2.xcodeproj".
+*.xcodeproj/
+
 # Xcode user state
 DerivedData/
 *.xcworkspace/xcuserdata/
